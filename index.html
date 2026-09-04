@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ChronoMed - Gestão de Validades</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen pb-28">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-30 glass-header border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm">
+    <div class="flex items-center gap-2">
+      <div class="bg-emerald-600 text-white p-2 rounded-xl shadow-sm">
+        <i data-lucide="pill" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <h1 class="text-lg font-bold text-slate-900 leading-tight">ChronoMed</h1>
+        <p class="text-xs text-slate-500 font-medium">Controle de Validades</p>
+      </div>
+    </div>
+    <div class="text-right">
+      <span id="totalBadge" class="bg-slate-200 text-slate-700 text-xs px-2.5 py-1 rounded-full font-semibold">0 itens</span>
+    </div>
+  </header>
+
+  <!-- Navegação de Abas -->
+  <div class="max-w-md mx-auto px-4 pt-3">
+    <div class="flex bg-slate-200/70 p-1 rounded-xl text-xs font-semibold text-slate-600">
+      <button id="abaEstoqueBtn" onclick="trocarAba('ativos')" class="flex-1 py-2 rounded-lg bg-white text-emerald-700 shadow-sm transition-all">
+        Em Estoque
+      </button>
+      <button id="abaHistoricoBtn" onclick="trocarAba('historico')" class="flex-1 py-2 rounded-lg text-slate-600 transition-all">
+        Histórico / Baixas
+      </button>
+    </div>
+  </div>
+
+  <!-- Conteúdo Principal -->
+  <main class="max-w-md mx-auto p-4 space-y-4">
+    <div class="relative">
+      <i data-lucide="search" class="w-4 h-4 absolute left-3 top-3.5 text-slate-400"></i>
+      <input type="text" id="searchInput" oninput="filtrarLista()" placeholder="Buscar por medicamento, laboratório ou lote..."
+        class="w-full pl-9 pr-4 py-2.5 bg-white rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm" />
+    </div>
+
+    <!-- Lista de Medicamentos -->
+    <div id="medicamentosContainer" class="space-y-4">
+      <div class="text-center py-16 text-slate-400 text-sm">
+        Carregando dados...
+      </div>
+    </div>
+  </main>
+
+  <!-- Botão Flutuante de Câmera -->
+  <div class="fixed bottom-6 right-6 z-40" id="btnCameraContainer">
+    <button onclick="iniciarCaptura()"
+      class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold p-4 rounded-full shadow-xl flex items-center justify-center transition-transform active:scale-95 border-2 border-white">
+      <i data-lucide="camera" class="w-7 h-7"></i>
+    </button>
+  </div>
+
+  <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden" />
+  <canvas id="fusionCanvas" class="hidden"></canvas>
+
+  <!-- Modal: Assistente de Captura (2 Fotos) -->
+  <div id="modalPassos" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-xs w-full p-6 text-center space-y-4 shadow-2xl">
+      <div class="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto" id="passoIcone">
+        <i data-lucide="camera" class="w-7 h-7"></i>
+      </div>
+      <div>
+        <h3 class="text-base font-bold text-slate-800" id="passoTitulo">Foto 1 de 2: Frente da Caixa</h3>
+        <p class="text-xs text-slate-500 mt-1" id="passoDescricao">Enquadre o nome do remédio, laboratório e dosagem.</p>
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button onclick="fecharModalPassos()" class="flex-1 py-2.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl hover:bg-slate-200">Cancelar</button>
+        <button onclick="abrirCamera()" class="flex-1 py-2.5 bg-emerald-600 text-white text-xs font-semibold rounded-xl hover:bg-emerald-700">Fotografar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Loading IA -->
+  <div id="modalLoading" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-xs w-full p-6 text-center space-y-3 shadow-2xl">
+      <div class="animate-spin text-emerald-600 mx-auto flex justify-center">
+        <i data-lucide="loader-2" class="w-9 h-9"></i>
+      </div>
+      <p class="text-sm font-bold text-slate-800">Processando na IA...</p>
+      <p class="text-xs text-slate-500">Unindo fotos e extraindo dados da embalagem.</p>
+    </div>
+  </div>
+
+  <!-- Modal: Formulário de Cadastro e Edição -->
+  <div id="modalFormulario" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white rounded-t-3xl sm:rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center border-b pb-3">
+        <div>
+          <h3 class="font-bold text-slate-800 text-base" id="formTituloModal">Conferir Dados</h3>
+          <p class="text-xs text-slate-400" id="formSubtituloModal">Verifique antes de registrar</p>
+        </div>
+        <button onclick="fecharFormulario()" class="text-slate-400 hover:text-slate-600 p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="formMedicamento" onsubmit="salvarMedicamento(event)" class="space-y-3 text-sm">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Medicamento</label>
+            <input type="text" id="campoNome" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-medium" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Laboratório</label>
+            <input type="text" id="campoLaboratorio" placeholder="Ex: EMS, Medley" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Dosagem</label>
+            <input type="text" id="campoDosagem" placeholder="Ex: 500mg" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Qtd / Apresentação</label>
+            <input type="text" id="campoQtd" placeholder="Ex: 30 comp." class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Lote</label>
+            <input type="text" id="campoLote" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-mono text-xs" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Validade (Mês/Ano)</label>
+            <input type="month" id="campoValidade" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-semibold text-emerald-700" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Caixas no Lote</label>
+          <input type="number" id="campoEstoque" value="1" min="1" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" />
+        </div>
+
+        <button type="submit" id="btnSalvar" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl mt-2 shadow-md transition-all active:scale-[0.98]">
+          Confirmar e Salvar no ChronoMed
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Menu de Ações Rápidas (Baixa / Editar / Excluir) -->
+  <div id="modalAcoes" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white rounded-t-3xl sm:rounded-2xl max-w-sm w-full p-5 space-y-3 shadow-2xl">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h4 class="font-bold text-slate-800 text-sm" id="modalAcoesTitulo">Gerenciar Medicamento</h4>
+        <button onclick="fecharModalAcoes()" class="text-slate-400 p-1"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      
+      <div class="space-y-2 pt-1" id="modalAcoesBotoes">
+        <!-- Preenchido dinamicamente -->
+      </div>
+    </div>
+  </div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

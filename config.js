@@ -1,0 +1,3 @@
+    const SUPABASE_URL = "https://ykdlwrwsxuqyahcuyqeg.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlrZGx3cndzeHVxeWFoY3V5cWVnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5MTk5MjksImV4cCI6MjEwMzQ5NTkyOX0.yvLksxtvSbeugNfgM8NT11GUoRxIG47wNHVtiWSRsTc";
+    const N8N_WEBHOOK_URL = "http://localhost:5678/webhook/extrair-medicamento"; // corrigir
