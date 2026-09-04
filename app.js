@@ -9,6 +9,8 @@ let fotoLote = null;
 let todosMedicamentos = [];
 let itemSelecionado = null;
 let editandoId = null;
+let filtroUrgenciaAtual = "todos"; // "todos", "urgente" ou "atencao"
+let ordenarPorNome = false;
 
 // ==========================================================================
 // INICIALIZAÇÃO E NAVEGAÇÃO DE ABAS
@@ -35,6 +37,249 @@ function trocarAba(aba) {
   }
 
   carregarMedicamentos();
+}
+
+// ==========================================================================
+// CÁLCULO DE URGÊNCIA DE VALIDADE
+// ==========================================================================
+function calcularUrgenciaValidade(dataValidadeStr) {
+  const [ano, mes, dia] = dataValidadeStr.split("-").map(Number);
+  const dataVal = new Date(ano, mes - 1, dia || 28);
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  const diffTempo = dataVal.getTime() - hoje.getTime();
+  const diffDias = Math.ceil(diffTempo / (1000 * 60 * 60 * 24));
+
+  if (diffDias < 0) {
+    return {
+      nivel: "vencido",
+      cardBorder: "border-rose-300 bg-rose-50/30",
+      badgeValidade: "bg-rose-100 text-rose-700 font-bold border border-rose-200",
+      textoAlerta: "Vencido!",
+      icone: "alert-circle"
+    };
+  } else if (diffDias <= 60) {
+    return {
+      nivel: "urgente",
+      cardBorder: "border-rose-200 bg-rose-50/20",
+      badgeValidade: "bg-rose-100 text-rose-700 font-bold border border-rose-200",
+      textoAlerta: diffDias <= 30 ? "Vence em menos de 30 dias" : `Faltam ${diffDias} dias`,
+      icone: "alert-triangle"
+    };
+  } else if (diffDias <= 90) {
+    return {
+      nivel: "atencao",
+      cardBorder: "border-amber-200 bg-amber-50/20",
+      badgeValidade: "bg-amber-100 text-amber-800 font-bold border border-amber-200",
+      textoAlerta: `Faltam ${diffDias} dias`,
+      icone: "clock"
+    };
+  } else {
+    return {
+      nivel: "seguro",
+      cardBorder: "border-slate-100 bg-white",
+      badgeValidade: "bg-slate-100 text-slate-600 font-medium",
+      textoAlerta: null,
+      icone: null
+    };
+  }
+}
+
+// ==========================================================================
+// EXPORTAÇÃO E RELATÓRIOS (PDF / IMPRESSÃO & WHATSAPP)
+// ==========================================================================
+function abrirModalExportar() {
+  document.getElementById("modalExportar").classList.remove("hidden");
+  lucide.createIcons();
+}
+
+function fecharModalExportar() {
+  document.getElementById("modalExportar").classList.add("hidden");
+}
+
+function agruparItensPorMes(lista) {
+  const grupos = {};
+  lista.forEach(item => {
+    const partes = item.data_validade.split("-");
+    const dataVal = new Date(partes[0], partes[1] - 1, 1);
+    const chaveMes = dataVal.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }).toUpperCase();
+    if (!grupos[chaveMes]) grupos[chaveMes] = [];
+    grupos[chaveMes].push(item);
+  });
+  return grupos;
+}
+
+function imprimirRelatorio() {
+  fecharModalExportar();
+  const itensAtivos = todosMedicamentos.filter(m => m.status === 'ativo' || !m.status);
+
+  if (itensAtivos.length === 0) {
+    alert("Não há itens ativos para gerar relatório.");
+    return;
+  }
+
+  const grupos = agruparItensPorMes(itensAtivos);
+  const dataHoje = new Date().toLocaleDateString("pt-BR");
+
+  let tabelaHtml = "";
+  for (const [mes, meds] of Object.entries(grupos)) {
+    tabelaHtml += `
+      <div style="margin-bottom: 20px;">
+        <h3 style="background:#f1f5f9; padding: 6px 10px; margin: 15px 0 8px; font-size: 13px; border-left: 4px solid #059669; text-transform: uppercase;">
+          ${mes} (${meds.length} ${meds.length === 1 ? 'item' : 'itens'})
+        </h3>
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+          <thead>
+            <tr style="border-bottom: 1px solid #cbd5e1; text-align: left; color: #475569;">
+              <th style="padding: 6px; width: 35px;">Conf.</th>
+              <th style="padding: 6px;">Medicamento</th>
+              <th style="padding: 6px;">Laboratório</th>
+              <th style="padding: 6px;">Lote</th>
+              <th style="padding: 6px;">Validade</th>
+              <th style="padding: 6px; text-align: center;">Qtd</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${meds.map(m => {
+              const partes = m.data_validade.split("-");
+              const mesAno = `${partes[1]}/${partes[0]}`;
+              return `
+                <tr style="border-bottom: 1px solid #f1f5f9;">
+                  <td style="padding: 6px; text-align: center;"><input type="checkbox" style="width: 14px; height: 14px;" /></td>
+                  <td style="padding: 6px; font-weight: bold; color: #0f172a;">${m.nome} <span style="font-weight: normal; color: #64748b;">${m.dosagem || ''}</span></td>
+                  <td style="padding: 6px; color: #334155;">${m.laboratorio || '-'}</td>
+                  <td style="padding: 6px; font-family: monospace;">${m.lote}</td>
+                  <td style="padding: 6px; color: #e11d48; font-weight: bold;">${mesAno}</td>
+                  <td style="padding: 6px; text-align: center; font-weight: bold;">${m.quantidade_estoque} cx</td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  const janelaImpressao = window.open("", "_blank");
+  janelaImpressao.document.write(`
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8" />
+      <title>ChronoMed - Relatório de Validades</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; color: #1e293b; }
+        @media print {
+          body { padding: 0; }
+          button { display: none; }
+        }
+      </style>
+    </head>
+    <body>
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #059669; padding-bottom: 10px; margin-bottom: 15px;">
+        <div>
+          <h1 style="margin: 0; font-size: 20px; color: #059669;">ChronoMed - Controle de Validades</h1>
+          <p style="margin: 3px 0 0; font-size: 12px; color: #64748b;">Relatório físico para conferência de prateleiras</p>
+        </div>
+        <div style="text-align: right; font-size: 11px; color: #64748b;">
+          Emitido em: <strong>${dataHoje}</strong><br />
+          Total de itens: <strong>${itensAtivos.length}</strong>
+        </div>
+      </div>
+
+      ${tabelaHtml}
+
+      <script>
+        window.onload = function() {
+          window.print();
+        }
+      <\/script>
+    </body>
+    </html>
+  `);
+  janelaImpressao.document.close();
+}
+
+function copiarRelatorioWhatsApp() {
+  fecharModalExportar();
+  const itensAtivos = todosMedicamentos.filter(m => m.status === 'ativo' || !m.status);
+
+  if (itensAtivos.length === 0) {
+    alert("Não há itens ativos para exportar.");
+    return;
+  }
+
+  const grupos = agruparItensPorMes(itensAtivos);
+  const dataHoje = new Date().toLocaleDateString("pt-BR");
+
+  let texto = `📋 *CHRONOMED - RELATÓRIO DE VALIDADES*\n`;
+  texto += `🗓️ Data: ${dataHoje}\n`;
+  texto += `📦 Total de itens: ${itensAtivos.length}\n`;
+  texto += `──────────────────────\n\n`;
+
+  for (const [mes, meds] of Object.entries(grupos)) {
+    texto += `📅 *${mes}* (${meds.length} ${meds.length === 1 ? 'item' : 'itens'}):\n`;
+    meds.forEach(m => {
+      const partes = m.data_validade.split("-");
+      const mesAno = `${partes[1]}/${partes[0]}`;
+      const lab = m.laboratorio ? ` [${m.laboratorio}]` : '';
+      texto += `• ${m.nome} ${m.dosagem || ''}${lab}\n`;
+      texto += `  Lote: ${m.lote} | Val: *${mesAno}* | Qtd: *${m.quantidade_estoque} cx*\n`;
+    });
+    texto += `\n`;
+  }
+
+  texto += `──────────────────────\n`;
+  texto += `_Relatório emitido para conferência de prateleiras_`;
+
+  copiarTextoUniversal(texto);
+}
+
+function copiarTextoUniversal(texto) {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(texto)
+      .then(() => perguntarAbrirWhatsApp(texto))
+      .catch(() => fallbackCopiar(texto));
+  } else {
+    fallbackCopiar(texto);
+  }
+}
+
+function fallbackCopiar(texto) {
+  const textArea = document.createElement("textarea");
+  textArea.value = texto;
+  textArea.style.position = "fixed";
+  textArea.style.left = "-999999px";
+  textArea.style.top = "-999999px";
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+
+  try {
+    const copiado = document.execCommand("copy");
+    document.body.removeChild(textArea);
+    if (copiado) {
+      perguntarAbrirWhatsApp(texto);
+    } else {
+      abrirWhatsAppDireto(texto);
+    }
+  } catch (err) {
+    document.body.removeChild(textArea);
+    abrirWhatsAppDireto(texto);
+  }
+}
+
+function perguntarAbrirWhatsApp(texto) {
+  const querAbrir = confirm("✅ Relatório copiado para a área de transferência!\n\nDeseja abrir o WhatsApp agora com o texto pronto?");
+  if (querAbrir) {
+    abrirWhatsAppDireto(texto);
+  }
+}
+
+function abrirWhatsAppDireto(texto) {
+  const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`;
+  window.open(url, "_blank");
 }
 
 // ==========================================================================
@@ -325,7 +570,6 @@ async function executarAcao(tipo, id) {
     const estoqueAtual = parseInt(item.quantidade_estoque) || 1;
     let qtdBaixa = 1;
 
-    // Se tiver mais de 1 caixa, pergunta quantas estão sendo dadas baixa
     if (estoqueAtual > 1) {
       const labelAcao = tipo === "vendido" ? "vendidas" : "descartadas/vencidas";
       const resposta = prompt(
@@ -333,7 +577,7 @@ async function executarAcao(tipo, id) {
         "1"
       );
 
-      if (resposta === null) return; // Cancelou
+      if (resposta === null) return;
 
       qtdBaixa = parseInt(resposta);
       if (isNaN(qtdBaixa) || qtdBaixa <= 0 || qtdBaixa > estoqueAtual) {
@@ -342,11 +586,9 @@ async function executarAcao(tipo, id) {
       }
     }
 
-    // Caso 1: Baixa parcial (ex: tinha 5, vendeu 2 -> restam 3 ativas e cria 2 no histórico)
     if (qtdBaixa < estoqueAtual) {
       const novoEstoqueAtivo = estoqueAtual - qtdBaixa;
 
-      // 1. Atualiza o item ativo com a quantidade restante
       const { error: errUpdate } = await supabaseClient
         .from("medicamentos_validade")
         .update({ quantidade_estoque: novoEstoqueAtivo })
@@ -357,7 +599,6 @@ async function executarAcao(tipo, id) {
         return;
       }
 
-      // 2. Insere a parcela baixada no histórico
       const itemHistorico = {
         nome: item.nome,
         laboratorio: item.laboratorio,
@@ -378,7 +619,6 @@ async function executarAcao(tipo, id) {
       else carregarMedicamentos();
 
     } else {
-      // Caso 2: Baixa total (vendeu todas as caixas)
       const { error } = await supabaseClient
         .from("medicamentos_validade")
         .update({
@@ -451,7 +691,7 @@ async function carregarMedicamentos() {
   }
 
   todosMedicamentos = data || [];
-  renderizarMedicamentos(todosMedicamentos);
+  aplicarFiltros();
 }
 
 function renderizarMedicamentos(lista) {
@@ -467,14 +707,7 @@ function renderizarMedicamentos(lista) {
   }
 
   if (abaAtual === "ativos") {
-    const grupos = {};
-    lista.forEach(item => {
-      const partes = item.data_validade.split("-");
-      const dataVal = new Date(partes[0], partes[1] - 1, 1);
-      const chaveMes = dataVal.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }).toUpperCase();
-      if (!grupos[chaveMes]) grupos[chaveMes] = [];
-      grupos[chaveMes].push(item);
-    });
+    const grupos = agruparItensPorMes(lista);
 
     let html = "";
     for (const [mes, meds] of Object.entries(grupos)) {
@@ -488,21 +721,34 @@ function renderizarMedicamentos(lista) {
             ${meds.map(m => {
               const partes = m.data_validade.split("-");
               const mesAnoFormatado = `${partes[1]}/${partes[0]}`;
+              const urgencia = calcularUrgenciaValidade(m.data_validade);
+
               return `
-                <div class="bg-white p-3.5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between hover:border-emerald-200 transition-all">
-                  <div class="space-y-0.5 flex-1 pr-2">
-                    <h4 class="font-bold text-slate-800 text-sm leading-snug">
-                      ${m.nome} <span class="text-slate-500 font-normal text-xs">${m.dosagem || ''}</span>
-                      ${m.laboratorio ? `<span class="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded ml-1">${m.laboratorio}</span>` : ''}
-                    </h4>
+                <div class="p-3.5 rounded-2xl border ${urgencia.cardBorder} shadow-sm flex items-center justify-between transition-all">
+                  <div class="space-y-1 flex-1 pr-2">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <h4 class="font-bold text-slate-800 text-sm leading-snug">
+                        ${m.nome} <span class="text-slate-500 font-normal text-xs">${m.dosagem || ''}</span>
+                      </h4>
+                      ${m.laboratorio ? `<span class="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">${m.laboratorio}</span>` : ''}
+                    </div>
+
                     <div class="text-[11px] text-slate-400 flex items-center gap-2 flex-wrap">
                       <span>Lote: <strong class="font-mono text-slate-600 font-semibold">${m.lote}</strong></span>
                       <span>•</span>
-                      <span>Val: <strong class="text-rose-600 font-semibold">${mesAnoFormatado}</strong></span>
+                      <span>Val: <strong class="px-1.5 py-0.5 rounded text-[10px] ${urgencia.badgeValidade}">${mesAnoFormatado}</strong></span>
                       <span>•</span>
                       <span class="font-bold text-slate-600">${m.quantidade_estoque} cx</span>
                     </div>
+
+                    ${urgencia.textoAlerta ? `
+                      <div class="flex items-center gap-1 text-[10px] font-bold ${urgencia.nivel === 'atencao' ? 'text-amber-600' : 'text-rose-600'} pt-0.5">
+                        <i data-lucide="${urgencia.icone}" class="w-3 h-3"></i>
+                        <span>${urgencia.textoAlerta}</span>
+                      </div>
+                    ` : ''}
                   </div>
+
                   <button onclick="abrirAcoes('${m.id}')" class="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl">
                     <i data-lucide="more-vertical" class="w-5 h-5"></i>
                   </button>
@@ -549,12 +795,107 @@ function renderizarMedicamentos(lista) {
   lucide.createIcons();
 }
 
-function filtrarLista() {
-  const termo = document.getElementById("searchInput").value.toLowerCase();
-  const filtrados = todosMedicamentos.filter(m => 
-    m.nome.toLowerCase().includes(termo) || 
-    (m.laboratorio && m.laboratorio.toLowerCase().includes(termo)) ||
-    (m.lote && m.lote.toLowerCase().includes(termo))
-  );
+// ==========================================================================
+// MODAL DE FILTROS E ORDENAÇÃO
+// ==========================================================================
+function abrirModalFiltros() {
+  document.getElementById("modalFiltros").classList.remove("hidden");
+  atualizarEstilosModalFiltros();
+  lucide.createIcons();
+}
+
+function fecharModalFiltros() {
+  document.getElementById("modalFiltros").classList.add("hidden");
+}
+
+function selecionarFiltroModal(tipo) {
+  filtroUrgenciaAtual = tipo;
+  atualizarEstilosModalFiltros();
+  aplicarFiltros();
+}
+
+function selecionarOrdemModal(porNome) {
+  ordenarPorNome = porNome;
+  atualizarEstilosModalFiltros();
+  aplicarFiltros();
+}
+
+function limparFiltrosModal() {
+  filtroUrgenciaAtual = "todos";
+  ordenarPorNome = false;
+  document.getElementById("searchInput").value = "";
+  atualizarEstilosModalFiltros();
+  aplicarFiltros();
+  fecharModalFiltros();
+}
+
+function atualizarEstilosModalFiltros() {
+  const opcoes = ["todos", "urgente", "atencao"];
+  opcoes.forEach(opt => {
+    const btn = document.getElementById(`opt-${opt}`);
+    const check = btn.querySelector(".icone-check");
+    if (filtroUrgenciaAtual === opt) {
+      btn.className = "w-full flex items-center justify-between p-2.5 rounded-xl border border-emerald-500 bg-emerald-50 text-emerald-800 font-semibold text-xs transition-all";
+      check.classList.remove("hidden");
+    } else {
+      btn.className = "w-full flex items-center justify-between p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium text-xs transition-all";
+      check.classList.add("hidden");
+    }
+  });
+
+  const btnVal = document.getElementById("ordem-validade");
+  const btnAlfa = document.getElementById("ordem-alfa");
+  if (ordenarPorNome) {
+    btnAlfa.className = "p-2.5 rounded-xl border border-emerald-500 bg-emerald-50 text-emerald-800 font-semibold text-xs flex items-center justify-center gap-1.5 transition-all";
+    btnVal.className = "p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium text-xs flex items-center justify-center gap-1.5 transition-all";
+  } else {
+    btnVal.className = "p-2.5 rounded-xl border border-emerald-500 bg-emerald-50 text-emerald-800 font-semibold text-xs flex items-center justify-center gap-1.5 transition-all";
+    btnAlfa.className = "p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium text-xs flex items-center justify-center gap-1.5 transition-all";
+  }
+
+  const indicador = document.getElementById("indicadorFiltroAtivo");
+  const btnAbrir = document.getElementById("btnAbrirFiltro");
+  const temFiltroAtivo = filtroUrgenciaAtual !== "todos" || ordenarPorNome;
+
+  if (temFiltroAtivo) {
+    indicador.classList.remove("hidden");
+    btnAbrir.classList.add("border-emerald-300", "bg-emerald-50/50", "text-emerald-700");
+  } else {
+    indicador.classList.add("hidden");
+    btnAbrir.classList.remove("border-emerald-300", "bg-emerald-50/50", "text-emerald-700");
+  }
+
+  lucide.createIcons();
+}
+
+function aplicarFiltros() {
+  const termo = (document.getElementById("searchInput")?.value || "").toLowerCase();
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  let filtrados = todosMedicamentos.filter(m => {
+    const matchTexto = 
+      m.nome.toLowerCase().includes(termo) || 
+      (m.laboratorio && m.laboratorio.toLowerCase().includes(termo)) ||
+      (m.lote && m.lote.toLowerCase().includes(termo));
+
+    if (!matchTexto) return false;
+
+    if (abaAtual === "ativos" && filtroUrgenciaAtual !== "todos") {
+      const [ano, mes, dia] = m.data_validade.split("-").map(Number);
+      const dataVal = new Date(ano, mes - 1, dia || 28);
+      const diffDias = Math.ceil((dataVal.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (filtroUrgenciaAtual === "urgente") return diffDias <= 60;
+      if (filtroUrgenciaAtual === "atencao") return diffDias <= 90;
+    }
+
+    return true;
+  });
+
+  if (ordenarPorNome) {
+    filtrados.sort((a, b) => a.nome.localeCompare(b.nome));
+  }
+
   renderizarMedicamentos(filtrados);
 }

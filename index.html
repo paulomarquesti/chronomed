@@ -22,8 +22,16 @@
         <p class="text-xs text-slate-500 font-medium">Controle de Validades</p>
       </div>
     </div>
-    <div class="text-right">
-      <span id="totalBadge" class="bg-slate-200 text-slate-700 text-xs px-2.5 py-1 rounded-full font-semibold">0 itens</span>
+    
+    <div class="flex items-center gap-2">
+      <!-- Botão Exportar -->
+      <button onclick="abrirModalExportar()" title="Exportar Relatório"
+        class="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-xl border border-emerald-200 transition-all">
+        <i data-lucide="file-down" class="w-4 h-4"></i>
+        <span>Relatório</span>
+      </button>
+
+      <span id="totalBadge" class="bg-slate-200 text-slate-700 text-xs px-2.5 py-1.5 rounded-full font-semibold">0 itens</span>
     </div>
   </header>
 
@@ -41,10 +49,21 @@
 
   <!-- Conteúdo Principal -->
   <main class="max-w-md mx-auto p-4 space-y-4">
-    <div class="relative">
-      <i data-lucide="search" class="w-4 h-4 absolute left-3 top-3.5 text-slate-400"></i>
-      <input type="text" id="searchInput" oninput="filtrarLista()" placeholder="Buscar por medicamento, laboratório ou lote..."
-        class="w-full pl-9 pr-4 py-2.5 bg-white rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm" />
+    <!-- Barra de Busca + Botão de Filtro -->
+    <div class="flex items-center gap-2">
+      <div class="relative flex-1">
+        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-3.5 text-slate-400"></i>
+        <input type="text" id="searchInput" oninput="aplicarFiltros()" placeholder="Buscar medicamento, laboratório ou lote..."
+          class="w-full pl-9 pr-3 py-2.5 bg-white rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm" />
+      </div>
+
+      <!-- Botão que abre o modal de filtros -->
+      <button onclick="abrirModalFiltros()" id="btnAbrirFiltro" title="Filtros e Ordenação"
+        class="relative p-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 shadow-sm transition-all flex items-center justify-center">
+        <i data-lucide="sliders-horizontal" class="w-5 h-5"></i>
+        <!-- Indicador de filtro ativo (bolinha) -->
+        <span id="indicadorFiltroAtivo" class="hidden absolute top-1.5 right-1.5 w-2 h-2 bg-emerald-600 rounded-full"></span>
+      </button>
     </div>
 
     <!-- Lista de Medicamentos -->
@@ -150,19 +169,118 @@
     </div>
   </div>
 
-  <!-- Modal: Menu de Ações Rápidas (Baixa / Editar / Excluir) -->
+  <!-- Modal: Menu de Ações Rápidas -->
   <div id="modalAcoes" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
     <div class="bg-white rounded-t-3xl sm:rounded-2xl max-w-sm w-full p-5 space-y-3 shadow-2xl">
       <div class="flex justify-between items-center border-b pb-2">
         <h4 class="font-bold text-slate-800 text-sm" id="modalAcoesTitulo">Gerenciar Medicamento</h4>
         <button onclick="fecharModalAcoes()" class="text-slate-400 p-1"><i data-lucide="x" class="w-4 h-4"></i></button>
       </div>
-      
-      <div class="space-y-2 pt-1" id="modalAcoesBotoes">
-        <!-- Preenchido dinamicamente -->
+      <div class="space-y-2 pt-1" id="modalAcoesBotoes"></div>
+    </div>
+  </div>
+
+  <!-- Modal: Opções de Exportação -->
+  <div id="modalExportar" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white rounded-t-3xl sm:rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+      <div class="flex justify-between items-center border-b pb-2">
+        <div class="flex items-center gap-2">
+          <i data-lucide="file-text" class="w-5 h-5 text-emerald-600"></i>
+          <h4 class="font-bold text-slate-800 text-sm">Exportar Relatório</h4>
+        </div>
+        <button onclick="fecharModalExportar()" class="text-slate-400 p-1"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+
+      <p class="text-xs text-slate-500">Escolha o formato do relatório para conferência física ou comunicação no balcão:</p>
+
+      <div class="space-y-2.5">
+        <button onclick="imprimirRelatorio()" class="w-full flex items-center gap-3 p-3 text-left font-semibold text-slate-800 hover:bg-emerald-50 rounded-xl border border-slate-200 transition-all">
+          <div class="p-2 bg-emerald-100 text-emerald-700 rounded-lg">
+            <i data-lucide="printer" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <p class="text-xs font-bold text-slate-900">Imprimir / Salvar PDF</p>
+            <p class="text-[11px] text-slate-400 font-normal">Folha A4 organizada com checklist para conferência</p>
+          </div>
+        </button>
+
+        <button onclick="copiarRelatorioWhatsApp()" class="w-full flex items-center gap-3 p-3 text-left font-semibold text-slate-800 hover:bg-emerald-50 rounded-xl border border-slate-200 transition-all">
+          <div class="p-2 bg-emerald-100 text-emerald-700 rounded-lg">
+            <i data-lucide="share-2" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <p class="text-xs font-bold text-slate-900">Copiar para WhatsApp</p>
+            <p class="text-[11px] text-slate-400 font-normal">Texto formatado com emoticons e resumo por mês</p>
+          </div>
+        </button>
       </div>
     </div>
   </div>
+
+  <!-- Modal: Filtros e Ordenação -->
+  <div id="modalFiltros" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white rounded-t-3xl sm:rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+      <div class="flex justify-between items-center border-b pb-2">
+        <div class="flex items-center gap-2">
+          <i data-lucide="sliders-horizontal" class="w-5 h-5 text-emerald-600"></i>
+          <h4 class="font-bold text-slate-800 text-sm">Filtrar e Ordenar</h4>
+        </div>
+        <button onclick="fecharModalFiltros()" class="text-slate-400 hover:text-slate-600 p-1">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Seção Urgência de Validade -->
+      <div class="space-y-2">
+        <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Prazo de Validade</label>
+        <div class="grid grid-cols-1 gap-1.5">
+          <button onclick="selecionarFiltroModal('todos')" id="opt-todos"
+            class="w-full flex items-center justify-between p-2.5 rounded-xl border border-emerald-500 bg-emerald-50 text-emerald-800 font-semibold text-xs transition-all">
+            <span>Todos os itens</span>
+            <i data-lucide="check" class="w-4 h-4 icone-check"></i>
+          </button>
+          <button onclick="selecionarFiltroModal('urgente')" id="opt-urgente"
+            class="w-full flex items-center justify-between p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium text-xs transition-all">
+            <span>🔴 Críticos (≤ 60 dias ou vencidos)</span>
+            <i data-lucide="check" class="w-4 h-4 icone-check hidden"></i>
+          </button>
+          <button onclick="selecionarFiltroModal('atencao')" id="opt-atencao"
+            class="w-full flex items-center justify-between p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium text-xs transition-all">
+            <span>🟡 Em Atenção (≤ 90 dias)</span>
+            <i data-lucide="check" class="w-4 h-4 icone-check hidden"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Seção Ordenação -->
+      <div class="space-y-2 pt-1 border-t border-slate-100">
+        <label class="text-xs font-bold text-slate-500 uppercase tracking-wider">Ordenação</label>
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="selecionarOrdemModal(false)" id="ordem-validade"
+            class="p-2.5 rounded-xl border border-emerald-500 bg-emerald-50 text-emerald-800 font-semibold text-xs flex items-center justify-center gap-1.5 transition-all">
+            <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
+            <span>Por Validade</span>
+          </button>
+          <button onclick="selecionarOrdemModal(true)" id="ordem-alfa"
+            class="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium text-xs flex items-center justify-center gap-1.5 transition-all">
+            <i data-lucide="arrow-down-a-z" class="w-3.5 h-3.5"></i>
+            <span>De A a Z</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Ações do Modal -->
+      <div class="pt-2 flex gap-2">
+        <button onclick="limparFiltrosModal()" class="flex-1 py-2.5 bg-slate-100 text-slate-600 font-semibold text-xs rounded-xl hover:bg-slate-200 transition-all">
+          Limpar
+        </button>
+        <button onclick="fecharModalFiltros()" class="flex-1 py-2.5 bg-emerald-600 text-white font-semibold text-xs rounded-xl hover:bg-emerald-700 shadow-sm transition-all">
+          Aplicar
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
